@@ -1,0 +1,61 @@
+name: Test sync-experiment
+
+on:
+  pull_request:
+  push:
+    branches:
+    - main
+    - docs-and-tests
+
+env:
+    TEST_REDIS_HOST: "localhost"
+    TEST_REDIS_PORT: 63790
+    CLEAR_REDIS: "true"
+
+jobs:
+
+  linux_checks:
+
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version:
+        - "3.11"
+      fail-fast: false
+    steps:
+
+    - uses: actions/checkout@v3
+
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python-version }}
+        cache: 'pip'
+
+    - name: Install test requirements
+      shell: bash -l {0}
+      run: |
+        set -vxeuo pipefail
+        python -m pip install .[all]
+        python -m pip list
+
+    - name: Start LDAP service in container.
+      shell: bash -l {0}
+      run: source continuous_integration/ldap/start_ldap.sh
+
+    - name: Start Redis
+      uses: supercharge/redis-github-action@1.8.0
+      with:
+        redis-port: ${{ env.TEST_REDIS_PORT }}
+
+
+    - name: Test with pytest
+      shell: bash -l {0}
+      run: |
+        set -vxeuo pipefail
+        coverage run -m pytest -v
+        coverage report
+      env:
+        # Opt in to LDAPAuthenticator tests.
+        TEST_LDAP: 1
+        TEST_REDIS: 1
